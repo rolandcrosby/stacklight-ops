@@ -46,20 +46,20 @@ resource "aws_instance" "swarm_host" {
     iam_instance_profile = aws_iam_instance_profile.swarm_host_profile.id
 
     user_data = <<-EOF
-                #!/bin/bash
-                set -eux
+        #!/bin/bash
+        set -eux
 
-                sudo apt-get update
-                sudo apt-get install -y unzip
+        sudo apt-get update
+        sudo apt-get install -y unzip
 
-                curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-                unzip awscliv2.zip
-                sudo ./aws/install
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip awscliv2.zip
+        sudo ./aws/install
 
-                aws s3 cp "s3://${data.terraform_remote_state.common.outputs.config_bucket_id}/stage/swarm_init.sh" .
-                chmod +x ./swarm_init.sh
-                sudo ./swarm_init.sh
-                EOF
+        aws s3 cp "s3://${data.terraform_remote_state.common.outputs.config_bucket_id}/stage/swarm_init.sh" .
+        chmod +x ./swarm_init.sh
+        sudo ./swarm_init.sh
+        EOF
 }
 
 resource "aws_security_group" "swarm_host_sg" {
