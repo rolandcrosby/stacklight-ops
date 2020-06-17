@@ -29,6 +29,11 @@ resource "aws_iam_role_policy_attachment" "swarm_host_read_config_bucket" {
     policy_arn = data.terraform_remote_state.common.outputs.read_config_bucket_policy_arn
 }
 
+resource "aws_iam_role_policy_attachment" "swarm_host_read_ecr" {
+    role = aws_iam_role.swarm_host_role.name
+    policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
 resource "aws_iam_instance_profile" "swarm_host_profile" {
     name = "swarm_host_profile"
     role = aws_iam_role.swarm_host_role.name
