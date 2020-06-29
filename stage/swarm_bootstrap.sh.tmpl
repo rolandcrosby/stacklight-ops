@@ -1,0 +1,13 @@
+#!/bin/bash
+set -eux
+
+sudo apt-get update
+sudo apt-get install -y unzip
+
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+
+aws s3 cp "s3://${bucket_id}/stage/swarm_init.sh" .
+chmod +x ./swarm_init.sh
+sudo ./swarm_init.sh

@@ -50,21 +50,14 @@ resource "aws_instance" "swarm_host" {
     vpc_security_group_ids = [aws_security_group.swarm_host_sg.id]
     iam_instance_profile = aws_iam_instance_profile.swarm_host_profile.id
 
-    user_data = <<-EOF
-        #!/bin/bash
-        set -eux
+    user_data = templatefile(
+        "./swarm_bootstrap.sh.tmpl",
+        { bucket_id = data.terraform_remote_state.common.outputs.config_bucket_id }
+    )
+}
 
-        sudo apt-get update
-        sudo apt-get install -y unzip
-
-        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-        unzip awscliv2.zip
-        sudo ./aws/install
-
-        aws s3 cp "s3://${data.terraform_remote_state.common.outputs.config_bucket_id}/stage/swarm_init.sh" .
-        chmod +x ./swarm_init.sh
-        sudo ./swarm_init.sh
-        EOF
+variable "client_ip" {
+    type = string
 }
 
 resource "aws_security_group" "swarm_host_sg" {
@@ -74,6 +67,24 @@ resource "aws_security_group" "swarm_host_sg" {
         to_port = 22
         protocol = "tcp"
         cidr_blocks = ["0.0.0.0/0"]
+    }
+    ingress {
+        from_port = 80
+        to_port = 80
+        protocol = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+    ingress {
+        from_port = 443
+        to_port = 443
+        protocol = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+    ingress {
+        from_port = 8080
+        to_port = 8080
+        protocol = "tcp"
+        cidr_blocks = ["${var.client_ip}/32"]
     }
     egress {
         from_port = 0
