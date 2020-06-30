@@ -14,6 +14,10 @@ provider "docker" {
     }
 }
 
+resource "docker_network" "intranet" {
+    name = "intranet"
+}
+
 variable "db_password" {
     type = string
 }
@@ -58,6 +62,15 @@ resource "docker_image" "ejabberd" {
     pull_triggers = [data.docker_registry_image.ejabberd.sha256_digest]
 }
 
+data "docker_registry_image" "migrator" {
+  name = data.terraform_remote_state.common.outputs.ecr_url_migrator
+}
+
+resource "docker_image" "migrator" {
+    name = data.docker_registry_image.migrator.name
+    pull_triggers = [data.docker_registry_image.migrator.sha256_digest]
+}
+
 ######################
 ##### Containers #####
 ######################
@@ -69,6 +82,12 @@ resource "docker_container" "traefik" {
     volumes {
         host_path = "/var/run/docker.sock"
         container_path = "/var/run/docker.sock"
+    }
+    networks_advanced {
+        name = "bridge"
+    }
+    networks_advanced {
+        name = "intranet"
     }
     ports {
         internal = 80
@@ -90,6 +109,9 @@ resource "docker_container" "stacklight_api" {
     env = [
         "RUST_LOG=debug"
     ]
+    networks_advanced {
+        name = "intranet"
+    }
     labels {
         label = "traefik.http.routers.stacklight_api.middlewares"
         value = "stacklight_api_stripprefix"
@@ -112,6 +134,9 @@ resource "docker_container" "ejabberd" {
         internal = 5222
         external = 5222
     }
+    networks_advanced {
+        name = "intranet"
+    }
 }
 
 resource "docker_container" "db" {
@@ -124,5 +149,8 @@ resource "docker_container" "db" {
     ports {
         internal = 5432
         external = 5432
+    }
+    networks_advanced {
+        name = "intranet"
     }
 }

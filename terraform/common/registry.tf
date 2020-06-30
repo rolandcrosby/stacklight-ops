@@ -18,3 +18,11 @@ output "ecr_url_ejabberd" {
     value = aws_ecr_repository.ejabberd.repository_url
 }
 
+resource "aws_ecr_repository" "migrator" {
+    name = "migrator"
+}
+
+output "ecr_url_migrator" {
+    value = aws_ecr_repository.migrator.repository_url
+}
+
