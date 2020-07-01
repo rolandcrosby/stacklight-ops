@@ -16,6 +16,7 @@ provider "docker" {
 
 resource "docker_network" "intranet" {
     name = "intranet"
+    driver = "overlay"
 }
 
 variable "db_password" {
@@ -71,46 +72,84 @@ resource "docker_image" "migrator" {
     pull_triggers = [data.docker_registry_image.migrator.sha256_digest]
 }
 
-######################
-##### Containers #####
-######################
+####################
+##### Services #####
+####################
 
-resource "docker_container" "traefik" {
-    name = "traefik"
-    image = docker_image.traefik.latest
-    command = ["--api.insecure=true", "--providers.docker"]
-    volumes {
-        host_path = "/var/run/docker.sock"
-        container_path = "/var/run/docker.sock"
+resource "docker_service" "traefik" {
+    name = "traefik-service"
+
+    task_spec {
+        container_spec {
+            image = docker_image.traefik.latest
+            args = [
+                "--api.insecure=true",
+                "--providers.docker",
+                "--providers.docker.swarmMode=true",
+                "--log.level=debug",
+                "--entryPoints.web.address=:80",
+                "--entryPoints.websecure.address=:443",
+                "--entryPoints.xmpp.address=:5222"
+            ]
+            mounts {
+                target = "/var/run/docker.sock"
+                source = "/var/run/docker.sock"
+                type = "bind"
+            }
+        }
+        placement {
+            constraints = ["node.role==manager"]
+        }
+        networks = [docker_network.intranet.id]
     }
-    networks_advanced {
-        name = "bridge"
+    endpoint_spec {
+        ports {
+            published_port = 80
+            target_port = 80
+        }
+        ports {
+            published_port = 443
+            target_port = 443
+        }
+        ports {
+            published_port = 5222
+            target_port = 5222
+        }
+        ports {
+            published_port = 8080
+            target_port = 8080
+        }
     }
-    networks_advanced {
-        name = "intranet"
-    }
-    ports {
-        internal = 80
-        external = 80
-    }
-    ports {
-        internal = 443
-        external = 443
-    }
-    ports {
-        internal = 8080
-        external = 8080
+    labels {
+        label = "traefik.enable"
+        value = "false"
     }
 }
 
-resource "docker_container" "stacklight_api" {
-    name = "stacklight_api"
-    image = docker_image.stacklight_api.latest
-    env = [
-        "RUST_LOG=debug"
-    ]
-    networks_advanced {
-        name = "intranet"
+resource "docker_service" "stacklight_api" {
+    name = "stacklight-api"
+
+    task_spec {
+        container_spec {
+            image = docker_image.stacklight_api.latest
+            env = {
+                RUST_LOG = "debug"
+            }
+        }
+        networks = [docker_network.intranet.id]
+    }
+
+    labels {
+        label = "traefik.http.routers.stacklight_api.rule"
+        value = "Host(`dev.stacklight.im`) && PathPrefix(`/api/`)"
+    }
+    labels {
+        label = "traefik.http.services.stacklight_api.loadbalancer.server.port"
+        value = "8000"
+    }
+    labels {
+        label = "traefik.http.routers.stacklight_api.entrypoints"
+        value = "web,websecure"
     }
     labels {
         label = "traefik.http.routers.stacklight_api.middlewares"
@@ -120,37 +159,44 @@ resource "docker_container" "stacklight_api" {
         label = "traefik.http.middlewares.stacklight_api_stripprefix.stripprefix.prefixes"
         value = "/api/"
     }
-    labels {
-        label = "traefik.http.routers.stacklight_api.rule"
-        value = "Host(`dev.stacklight.im`) && PathPrefix(`/api/`)"
-    }
 }
 
-resource "docker_container" "ejabberd" {
+resource "docker_service" "ejabberd" {
     name = "ejabberd"
-    image = docker_image.ejabberd.latest
-    working_dir = "/home/ejabberd" # TODO not sure why omitting this always forces replacement?
-    ports {
-        internal = 5222
-        external = 5222
+    task_spec {
+        container_spec {
+            image = docker_image.ejabberd.latest
+            dir = "/home/ejabberd"
+        }
+        networks = [docker_network.intranet.id]
     }
-    networks_advanced {
-        name = "intranet"
+    labels {
+        label = "traefik.tcp.services.ejabberd.loadbalancer.server.port"
+        value = "5222"
+    }
+    labels {
+        label = "traefik.tcp.routers.ejrouter.service"
+        value = "ejabberd"
+    }
+    labels {
+        label = "traefik.tcp.routers.ejrouter.entrypoints"
+        value = "xmpp"
+    }
+    labels {
+        label = "traefik.tcp.routers.ejrouter.rule"
+        value = "HostSNI(`*`)"
     }
 }
-
-resource "docker_container" "db" {
+resource "docker_service" "db" {
     name = "db"
-    image = docker_image.postgres.latest
-    env = [
-        "POSTGRES_PASSWORD=${var.db_password}",
-        "POSTGRES_HOST_AUTH_METHOD=password"
-    ]
-    ports {
-        internal = 5432
-        external = 5432
-    }
-    networks_advanced {
-        name = "intranet"
+    task_spec {
+        container_spec {
+            image = docker_image.postgres.latest
+            env = {
+                POSTGRES_PASSWORD = var.db_password,
+                POSTGRES_HOST_AUTH_METHOD = "password"
+            }
+        }
+        networks = [docker_network.intranet.id]
     }
 }
